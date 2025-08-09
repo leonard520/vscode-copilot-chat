@@ -97,7 +97,7 @@ export class TestModelMetadataFetcher extends ModelMetadataFetcher {
 	}
 
 	override async getAllChatModels(): Promise<IChatModelInformation[]> {
-		const type = this._isModelLab ? 'modelLab' : 'prod';
+		const type = 'prod';
 		const req = new ModelMetadataRequest(type);
 
 		return await TestModelMetadataFetcher.Queues.queue(type, async () => {
