@@ -137,8 +137,18 @@ export async function executeTests(ctx: SimulationTestContext, testsToRun: reado
 	const location = groupBy(testsToRun as SimulationTest[], test => (test.suite.extHost ?? ctx.opts.inExtensionHost) ? 'extHost' : 'local');
 
 	const extensionRunner = new Lazy(() => TestExecutionInExtension.create(ctx));
+
+	// Wait for mcp server to fully startup before running tests
+	// This ensures the extension has completed its initialization process
+	const extHostTests = location['extHost'] ?? [];
+	if (extHostTests.length > 0) {
+		console.log('Waiting for mcp server to fully startup...');
+		//await new Promise(resolve => setTimeout(resolve, 5000));
+		console.log('Mcp server should startup wait completed, proceeding with tests.');
+	}
+
 	const [extHost, local] = await Promise.all([
-		executeTestsUsing(ctx, location['extHost'] ?? [], (...args) => extensionRunner.value.then(e => e.executeTest(...args))),
+		executeTestsUsing(ctx, extHostTests, (...args) => extensionRunner.value.then(e => e.executeTest(...args))),
 		executeTestsUsing(ctx, location['local'] ?? [], executeTestOnce),
 	]);
 
@@ -424,8 +434,10 @@ export const executeTestOnce = async (
 
 	testingServiceCollection.define(IPromptWorkspaceLabels, new SyncDescriptor(PromptWorkspaceLabels));
 	if (isInRealExtensionHost) {
+		console.log(`[${new Date().toISOString()}] Running in real extension host`);
 		testingServiceCollection.define(IToolsService, new SyncDescriptor(SimulationExtHostToolsService, [ctx.simulationServicesOptions.disabledTools]));
 	} else {
+		console.log(`now is [${new Date().toISOString()}]  Running in extension host`);
 		testingServiceCollection.define(IToolsService, new SyncDescriptor(TestToolsService, [ctx.simulationServicesOptions.disabledTools]));
 	}
 

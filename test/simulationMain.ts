@@ -271,6 +271,9 @@ async function prepareTestEnvironment(opts: SimulationOptions, jsonOutputPrinter
 		}
 	}
 
+	console.log(`Waiting for 5 seconds before starting tests...`);
+	//await new Promise(resolve => setTimeout(resolve, 5000));
+
 	return {
 		...createSimulationTestContext(opts, runningAllTests, baseline, canUseBaseline, jsonOutputPrinter, outputPath, externalScenariosPath, rpcInExtensionHost, configs),
 		testsToRun,

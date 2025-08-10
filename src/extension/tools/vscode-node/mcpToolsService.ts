@@ -2,13 +2,12 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-import * as vscode from 'vscode';
-// eslint-disable-next-line no-restricted-imports
 import * as fs from 'fs';
+import * as vscode from 'vscode';
 /* eslint-disable import/no-restricted-paths */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { CancellationError, LanguageModelTextPart, LanguageModelToolInformation, LanguageModelToolResult } from 'vscode';
+import { CancellationError, LanguageModelTextPart, LanguageModelToolInformation, LanguageModelToolMCPSource, LanguageModelToolResult } from 'vscode';
 import { ILogService } from '../../../platform/log/common/logService';
 import { Lazy } from '../../../util/vs/base/common/lazy';
 import { IInstantiationService } from '../../../util/vs/platform/instantiation/common/instantiation';
@@ -17,7 +16,6 @@ import { ICopilotTool } from '../common/toolsRegistry';
 import { BaseToolsService } from '../common/toolsService';
 // eslint-disable-next-line no-duplicate-imports
 import { LanguageModelToolResult2 } from 'vscode';
-// eslint-disable-next-line local/no-test-imports
 import { logger } from '../../../../test/simulationLogger';
 
 type McpServers = {
@@ -97,6 +95,7 @@ export class McpToolsService extends BaseToolsService {
 							description: tool.description as string,
 							inputSchema: tool.inputSchema,
 							tags: ['vscode_editing'],
+							source: new LanguageModelToolMCPSource(name, name),
 						};
 						this.mcpTools.push(info);
 					}
