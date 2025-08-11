@@ -139,11 +139,11 @@ export class TestToolsService extends BaseToolsService implements IToolsService 
 		return undefined;
 	}
 
-	getEnabledTools(request: vscode.ChatRequest, filter?: (tool: LanguageModelToolInformation) => boolean | undefined): LanguageModelToolInformation[] {
+	getEnabledTools(request: vscode.ChatRequest, filter?: (tool: LanguageModelToolInformation) => boolean | undefined): Promise<LanguageModelToolInformation[]> {
 		const toolMap = new Map(this.tools.map(t => [t.name, t]));
 
 		const packageJsonTools = getPackagejsonToolsForTest();
-		return this.tools.filter(tool => {
+		const result = this.tools.filter(tool => {
 			// 0. Check if the tool was enabled or disabled via the tool picker
 			const toolPickerSelection = request.tools.get(getContributedToolName(tool.name));
 			if (typeof toolPickerSelection === 'boolean') {
@@ -167,6 +167,7 @@ export class TestToolsService extends BaseToolsService implements IToolsService 
 			return packageJsonTools.has(tool.name);
 		});
 
+		return Promise.resolve(result);
 	}
 
 	addTestToolOverride(info: LanguageModelToolInformation, tool: vscode.LanguageModelTool<unknown>): void {

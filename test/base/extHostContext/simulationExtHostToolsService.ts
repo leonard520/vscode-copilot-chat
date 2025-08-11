@@ -137,7 +137,7 @@ export class SimulationExtHostToolsService extends BaseToolsService implements I
 		return undefined;
 	}
 
-	getEnabledTools(request: ChatRequest, filter?: (tool: LanguageModelToolInformation) => boolean | undefined): LanguageModelToolInformation[] {
+	getEnabledTools(request: ChatRequest, filter?: (tool: LanguageModelToolInformation) => boolean | undefined): Promise<LanguageModelToolInformation[]> {
 		const packageJsonTools = getPackagejsonToolsForTest();
 		const tools = this.tools.filter(tool => filter?.(tool) ?? (!this._disabledTools.has(getToolName(tool.name)) && (tool.name.startsWith("appmod") || packageJsonTools.has(tool.name))));
 		const mcpTools = this._mcpToolService.tools.filter(tool => filter?.(tool) ?? (!this._disabledTools.has(getToolName(tool.name))));
@@ -154,7 +154,7 @@ export class SimulationExtHostToolsService extends BaseToolsService implements I
 
 		const toolNames = result.map(t => t.name).join(",");
 		logger.debug('SimulationExtHostToolsService.getEnabledTool', result.length, toolNames);
-		return result;
+		return Promise.resolve(result);
 	}
 
 	addTestToolOverride(info: LanguageModelToolInformation, tool: LanguageModelTool<unknown>): void {

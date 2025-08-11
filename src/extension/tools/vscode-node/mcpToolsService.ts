@@ -36,6 +36,8 @@ export class McpToolsService extends BaseToolsService {
 	private readonly _copilotTools: Lazy<Map<ToolName, ICopilotTool<any>>>;
 	private mcpTools: vscode.LanguageModelToolInformation[] = [];
 	private readonly mcp!: Client;
+	private _initializationPromise: Promise<void> | undefined;
+	private _isInitialized: boolean = false;
 
 	get tools(): ReadonlyArray<vscode.LanguageModelToolInformation> {
 		return this.mcpTools.map(tool => {
@@ -58,51 +60,68 @@ export class McpToolsService extends BaseToolsService {
 	) {
 		super(logService);
 		this._copilotTools = new Lazy(() => new Map());
+
 		if (process.env.MCP_CONFIG_FILE !== undefined) {
 			this.mcp = new Client({ name: 'mcp-simulation-client', version: '1.0.0' });
-			const config = fs.readFileSync(process.env.MCP_CONFIG_FILE, 'utf8');
-			const mcpServers: McpServers = JSON.parse(config);
-
-			for (const [name, server] of Object.entries(mcpServers.servers)) {
-				let transport;
-				const configuredEnv = server.env ? Object.fromEntries(Object.entries(server.env).map(([key, value]) => [key, replaceEnvVariables(value)])) : undefined;
-				// combine env with process.env, ensuring all values are strings (no undefined)
-				const rawEnv = configuredEnv ? { ...process.env, ...configuredEnv } : process.env;
-				const combinedEnv: Record<string, string> = {};
-				for (const [key, value] of Object.entries(rawEnv)) {
-					if (typeof value === 'string') {
-						combinedEnv[key] = value;
-					}
-				}
-
-				if (server.type === 'stdio') {
-					transport = new StdioClientTransport({
-						command: replaceEnvVariables(server.command),
-						args: server.args.map(arg => replaceEnvVariables(arg)),
-						env: combinedEnv,
-						stderr: 'inherit', // Default behavior, can be customized if needed
-						cwd: server.cwd ? replaceEnvVariables(server.cwd) : undefined,
-					});
-				} else {
-					logger.warn(`Unsupported MCP transport type: ${server.type} for server ${name}`);
-					continue; // Unsupported transport type
-				}
-				this.mcp.connect(transport).then(async () => {
-					const mcpTools = (await this.mcp.listTools()).tools;
-					for (const tool of mcpTools) {
-						const info: LanguageModelToolInformation = {
-							name: tool.name,
-							description: tool.description as string,
-							inputSchema: tool.inputSchema,
-							tags: ['vscode_editing'],
-							source: new LanguageModelToolMCPSource(name, name),
-						};
-						this.mcpTools.push(info);
-					}
-					logger.info(`Connected to MCP server with transport ${JSON.stringify(transport)} and tools: ${JSON.stringify(this.mcpTools)}`);
-				});
-			}
 		}
+	}
+
+	private async initializeMcpServers(): Promise<void> {
+		if (this._isInitialized || !this.mcp || process.env.MCP_CONFIG_FILE === undefined) {
+			return;
+		}
+
+		const config = fs.readFileSync(process.env.MCP_CONFIG_FILE, 'utf8');
+		const mcpServers: McpServers = JSON.parse(config);
+
+		for (const [name, server] of Object.entries(mcpServers.servers)) {
+			let transport;
+			const configuredEnv = server.env ? Object.fromEntries(Object.entries(server.env).map(([key, value]) => [key, replaceEnvVariables(value)])) : undefined;
+			// combine env with process.env, ensuring all values are strings (no undefined)
+			const rawEnv = configuredEnv ? { ...process.env, ...configuredEnv } : process.env;
+			const combinedEnv: Record<string, string> = {};
+			for (const [key, value] of Object.entries(rawEnv)) {
+				if (typeof value === 'string') {
+					combinedEnv[key] = value;
+				}
+			}
+
+			if (server.type === 'stdio') {
+				transport = new StdioClientTransport({
+					command: replaceEnvVariables(server.command),
+					args: server.args.map(arg => replaceEnvVariables(arg)),
+					env: combinedEnv,
+					stderr: 'inherit', // Default behavior, can be customized if needed
+					cwd: server.cwd ? replaceEnvVariables(server.cwd) : undefined,
+				});
+			} else {
+				logger.warn(`Unsupported MCP transport type: ${server.type} for server ${name}`);
+				continue; // Unsupported transport type
+			}
+
+			await this.mcp.connect(transport);
+			const mcpTools = (await this.mcp.listTools()).tools;
+			for (const tool of mcpTools) {
+				const info: LanguageModelToolInformation = {
+					name: tool.name,
+					description: tool.description as string,
+					inputSchema: tool.inputSchema,
+					tags: ['vscode_editing'],
+					source: new LanguageModelToolMCPSource(name, name),
+				};
+				this.mcpTools.push(info);
+			}
+			logger.info(`Connected to MCP server with transport ${JSON.stringify(transport)} and tools: ${JSON.stringify(this.mcpTools)}`);
+		}
+
+		this._isInitialized = true;
+	}
+
+	private async ensureInitialized(): Promise<void> {
+		if (!this._initializationPromise) {
+			this._initializationPromise = this.initializeMcpServers();
+		}
+		return this._initializationPromise;
 	}
 
 	async invokeTool(name: string | ToolName, options: vscode.LanguageModelToolInvocationOptions<Object>, token: vscode.CancellationToken): Promise<LanguageModelToolResult | LanguageModelToolResult2> {
@@ -135,10 +154,13 @@ export class McpToolsService extends BaseToolsService {
 		throw new Error('This method for tests only');
 	}
 
-	getEnabledTools(request: vscode.ChatRequest, filter?: (tool: vscode.LanguageModelToolInformation) => boolean | undefined): vscode.LanguageModelToolInformation[] {
+	async getEnabledTools(request: vscode.ChatRequest, filter?: (tool: vscode.LanguageModelToolInformation) => boolean | undefined): Promise<vscode.LanguageModelToolInformation[]> {
+		await this.ensureInitialized();
+		console.log(`[time ${Date.now().toLocaleString()}, getEnabledTools for mcp]`);
+
 		const toolMap = new Map(this.tools.map(t => [t.name, t]));
 
-		return this.tools.filter(tool => {
+		const result = this.tools.filter(tool => {
 			// 0. Check if the tool was disabled via the tool picker. If so, it must be disabled here
 			const toolPickerSelection = request.tools.get(getContributedToolName(tool.name));
 			if (toolPickerSelection === false) {
@@ -172,6 +194,8 @@ export class McpToolsService extends BaseToolsService {
 
 			return false;
 		});
+
+		return result;
 	}
 }
 
